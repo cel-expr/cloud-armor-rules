@@ -1,0 +1,50 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Cloud Armor Rules CLI simulator and CEL evaluation libraries
+"""
+module(
+    name = "cloud-armor-rules",
+    version = "0.1.0",
+)
+
+bazel_dep(
+    name = "bazel_skylib",
+    version = "1.7.1",
+)
+bazel_dep(
+    name = "rules_go",
+    version = "0.50.1",
+    repo_name = "io_bazel_rules_go",
+)
+bazel_dep(
+    name = "gazelle",
+    version = "0.39.1",
+    repo_name = "bazel_gazelle",
+)
+
+go_deps = use_extension("@bazel_gazelle//:extensions.bzl", "go_deps")
+go_deps.gazelle_override(
+    # Force Gazelle to wipe out the existing build files before regenerate them.
+    build_file_generation = "on",
+    directives = [
+        "gazelle:go_generate_proto false",
+        # Provide hints to gazelle about how includes and imports map to build targets
+        "gazelle:resolve go cel.dev/expr @dev_cel_expr//:expr",
+    ],
+    path = "cel.dev/expr",
+)
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(go_deps, "com_github_google_cel_go", "in_gopkg_yaml_v3", "org_golang_google_protobuf")

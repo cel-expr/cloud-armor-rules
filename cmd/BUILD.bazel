@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+licenses(["notice"])  # Apache 2.0
+
+go_library(
+    name = "cmd_lib",
+    srcs = ["rulescli.go"],
+    importpath = "github.com/cel-expr/cloud-armor-rules/cmd",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pkg/cloudarmor",
+        "@com_github_google_cel_go//cel:go_default_library",
+        "@org_golang_google_protobuf//encoding/prototext",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+go_binary(
+    name = "cmd",
+    embed = [":cmd_lib"],
+    visibility = ["//visibility:public"],
+)
