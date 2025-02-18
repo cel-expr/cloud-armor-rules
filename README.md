@@ -10,7 +10,7 @@ consistent with how the service will evaluate these rules.
 First, build the CLI:
 
 ```
-go build github.com/cel-expr/cloud-armor-rules/cmd/rulescli
+go build -o rulescli github.com/cel-expr/cloud-armor-rules/cmd && chmod 0755 rulescli
 ```
 
 This will produce a `rulescli` binary in the current directory which can be
