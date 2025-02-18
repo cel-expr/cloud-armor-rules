@@ -20,7 +20,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -37,6 +36,13 @@ import (
 	"github.com/google/cel-go/common/types/ref"
 )
 
+const (
+	// VCurrent supports the attributes currently available in Cloud Armor
+	VCurrent uint32 = 1
+	// VNext supports the next set of variables and functions to be enabled in Cloud Armor
+	VNext uint32 = 2
+)
+
 // Rules represents a Cloud Armor rules environment.
 type Rules struct {
 	version uint32
@@ -45,6 +51,14 @@ type Rules struct {
 
 // RulesOption is a functional operator for configuring the Cloud Armor rules environment.
 type RulesOption func(*Rules) (*Rules, error)
+
+// Version sets the version of the Cloud Armor rules environment.
+func Version(version uint32) RulesOption {
+	return func(r *Rules) (*Rules, error) {
+		r.version = version
+		return r, nil
+	}
+}
 
 // NewRules creates a new CloudArmorRules instance.
 //
@@ -60,7 +74,7 @@ type RulesOption func(*Rules) (*Rules, error)
 // Program instances are concurrency-safe and can be cached.
 func NewRules(options ...RulesOption) (*Rules, error) {
 	var err error
-	rules := &Rules{version: math.MaxUint32}
+	rules := &Rules{version: VCurrent}
 	for _, opt := range options {
 		rules, err = opt(rules)
 		if err != nil {
@@ -73,6 +87,7 @@ func NewRules(options ...RulesOption) (*Rules, error) {
 
 // Compile compiles the given expression into a cel.Ast or returns a set of issues.
 func (r *Rules) Compile(expr string) (*cel.Ast, error) {
+
 	ast, iss := r.env.Compile(expr)
 	if iss != nil {
 		return nil, iss.Err()
@@ -90,14 +105,14 @@ func (r *Rules) Program(ast *cel.Ast, prgOpts ...cel.ProgramOption) (cel.Program
 	return r.env.Program(ast, prgOpts...)
 }
 
-// RunTestSuite runs a test suite against the an expression.
+// RunRuleValidation runs a test suite against the an expression.
 //
 // The test suite is expected to contain a set of test cases which are executed in sequence.
 // Each test case is expected to contain an expression to compile, the variables to bind to the
 // expression, and the expected output or error.
 //
 // The return value is a slice of test statuses, one for each test case in the suite.
-func (r *Rules) RunTestSuite(prg cel.Program, testCases []*TestCase) []TestStatus {
+func (r *Rules) RunRuleValidation(prg cel.Program, testCases []*TestCase) []TestStatus {
 	var statuses []TestStatus
 	for _, tc := range testCases {
 		out, _, err := prg.Eval(tc.When)
@@ -141,6 +156,7 @@ func (lib *library) CompileOptions() []cel.EnvOption {
 		// Ensure that expressions are checked for common issues.
 		cel.DefaultUTCTimeZone(true),
 		cel.ExtendedValidations(),
+		cel.EnableIdentifierEscapeSyntax(),
 
 		// Replace the standard macros with a single custom has macro.
 		cel.ClearMacros(),
@@ -158,7 +174,7 @@ func (lib *library) ProgramOptions() []cel.ProgramOption {
 }
 
 func cloudArmorVariables(version uint32) []cel.EnvOption {
-	return []cel.EnvOption{
+	envOptions := []cel.EnvOption{
 		// Request attributes
 		cel.Variable("request.method", cel.StringType),
 		cel.Variable("request.headers", cel.MapType(cel.StringType, cel.DynType)),
@@ -183,6 +199,16 @@ func cloudArmorVariables(version uint32) []cel.EnvOption {
 		cel.Variable("token.recaptcha_session.score", cel.DoubleType),
 		cel.Variable("token.recaptcha_session.valid", cel.BoolType),
 	}
+
+	// Introduce new fields only if version >= VNext
+	if version >= VNext {
+		envOptions = append(envOptions,
+			cel.Variable("request.body", cel.StringType),
+			// request.params is parsed form of request.body and request.query
+			cel.Variable("request.params", cel.MapType(cel.StringType, cel.DynType)),
+		)
+	}
+	return envOptions
 }
 
 func cloudArmorFunctions(version uint32) []cel.EnvOption {
@@ -342,7 +368,7 @@ func hasWithIndexMacroFactory(mef cel.MacroExprFactory, target ast.Expr, args []
 	if call.FunctionName() != operators.Index {
 		return nil, nil
 	}
-	if call.IsMemberFunction() || len(call.Args()) != 2 {
+	if call.Target() != nil || len(call.Args()) != 2 {
 		return nil, nil
 	}
 	obj := call.Args()[0]

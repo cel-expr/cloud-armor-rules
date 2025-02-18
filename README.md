@@ -18,19 +18,31 @@ executed using `./rulescli` to provide a basic usage message.
 
 ## Usage
 
-The CLI provides two modes `-compile` and `-test`.
+The CLI provides three modes `-expr`, `-file` and `-test`.
 
-### Compile
+### expr
 
-The `-compile=<expr>` flag indicates that the expression provided following the
+The `-expr=<expr>` flag indicates that the expression provided following the
 flag will be compiled and output into a textproto format. The `-output_format`
-flag can be used with the `-compile` flag to produce either a textproto or
-binary protocol buffer (binarypb) file as well.
+flag can be used with the `-expr` flag to produce either a textproto or binary
+protocol buffer (binarypb) file as well.
 
 Here's a simple example:
 
 ```
-./rulescli -compile="request.method == 'GET'"
+rulescli -expr="request.method == 'GET'"
+```
+
+If no flag is specified, the default behavior is equivalent to using -expr:
+
+```
+rulescli "request.method == 'GET'"
+```
+
+If used with output_format as textproto:
+
+```
+rulescli "request.method == 'GET'" -output_format=textproto
 ```
 
 Will produce the following `dev.cel.expr.CheckedExpr` output:
@@ -112,17 +124,128 @@ expr:  {
 To produce a binary protocol buffer, use the following option:
 
 ```
-rulescli -compile="request.method == 'GET'" -output_format=binarypb
+rulescli -expr="request.method == 'GET'" -output_format=binarypb
 ```
 
 An invalid expression will produce a list of issues to be resolved from the
 input:
 
 ```
-> rulescli -compile "request.metho == 'GET'"
+> rulescli -expr "request.metho == 'GET'"
 failed to compile expression: ERROR: <input>:1:1: undeclared reference to 'request' (in container '')
  | request.metho == 'GET'
  | ^
+```
+
+By default, these expressions would be able to test the currently exposed
+Cloud armor attributes.
+To test the next versions of attributes, like request.params and request.body,
+set the version of the expressions to VNext as follow:
+
+```
+rulescli -expr="request.method == 'GET'" -version VNext
+```
+
+### file
+
+The `-file=<filename>` flag indicates that the expressions contained in the
+provided file will be compiled.
+
+Here's a simple example:
+
+```
+rulescli -file="fileExpr.txt"
+```
+
+Expressions in the file should be separated by the delimiter ';' and could
+extend to multiline expressions.
+
+Contents for file fileExpr.txt:
+
+```
+request.method == "POST";
+request.query.contains('XyZ') &&
+request.path.startsWith('path');
+request.path1.startsWith('path1') || request.method == "GET";
+```
+
+Expected output:
+
+```
+failed to compile expression: ERROR: <input>:1:1: undeclared reference to 'request' (in container '')
+ | request.path1.startsWith('path1') || request.method == "GET"
+ | ^
+Error processing file: failed to compile expression: request.path1.startsWith('path1') || request.method == "GET"
+```
+
+Whereas, additional information could be fetched using -verbose flag as follow:
+
+```
+rulescli -file="test/fileExpr.txt" -verbose
+```
+
+Expected Output:
+
+```
+Reading file: fileExpr.txt
+
+Processing expr at index:  0 , line:  1  expr:  request.method == "POST"
+Successfully compiled expression: request.method == "POST"
+
+Processing expr at index:  1 , line:  3  expr:  request.query.contains('XyZ') &&
+request.path.startsWith('path')
+Successfully compiled expression: request.query.contains('XyZ') &&
+request.path.startsWith('path')
+
+Processing expr at index:  2 , line:  4  expr:  request.path1.startsWith('path1') || request.method == "GET"
+failed to compile expression: ERROR: <input>:1:1: undeclared reference to 'request' (in container '')
+ | request.path1.startsWith('path1') || request.method == "GET"
+ | ^
+Error processing file: failed to compile expression: request.path1.startsWith('path1') || request.method == "GET"
+```
+
+whereas, for the following contents for file fileExpr.txt:
+
+```
+request.method == "POST" &&
+request.query.contains('XyZ');
+request.path.startsWith('path');;
+
+request.path.startsWith('path1') || request.path.startsWith('path2');
+request.scheme == 'http'; request.scheme == 'https';
+request.headers['User-Agent'].contains('Chrome');
+
+request.scheme == 'http' && request.method == 'GET' ||
+request.path.startsWith('/path');
+```
+
+expected output:
+
+```
+Successfully compiled expression: request.method == "POST" &&
+request.query.contains('XyZ')
+Successfully compiled expression: request.path.startsWith('path')
+Successfully compiled expression: request.path.startsWith('path1') || request.path.startsWith('path2')
+Successfully compiled expression: request.scheme == 'http'
+Successfully compiled expression: request.scheme == 'https'
+Successfully compiled expression: request.headers['User-Agent'].contains('Chrome')
+Successfully compiled expression: request.scheme == 'http' && request.method == 'GET' ||
+request.path.startsWith('/path')
+```
+
+To print the AST expressions of CEL expressions from a file as textproto:
+
+```
+rulescli -file="test/fileExpr.txt" -output_format=textproto
+```
+
+By default, file flag would allow to test the currently exposed
+Cloud armor attributes.
+To test the next versions of attributes, like request.params and request.body,
+set the version of the expressions to VNext as follow:
+
+```
+rulescli -file="test/fileExpr.txt" -version VNext
 ```
 
 ### Test
@@ -158,6 +281,29 @@ values. In other words `request.method` is a type `string` field, but the
 variable `request` is not defined. For convenience, the YAML supports a
 structured object as input for the sake of simplicity and reducing repetition
 of test code.
+
+#### New Attributes (Proposed for NextVersion)
+
+1.  request.body Represents the entire POST Body as string. e.g. Expression:
+    request.body.contains('bad_data')
+2.  request.params It represents the query_parameters from URL in GET requests
+    as well as key-value parameters from POST Body.
+
+    ```
+    e.g. for request curl "https://www.example.com/nonauth/random1.cs?dest=/somepath"
+    ```
+
+    expression would be:
+
+    ```
+    has(request.params.dest) or has(request.params['dest'])
+    ```
+
+    Similarly, it also supports accessing the nested keys as below:
+
+    ```
+    request.params.keys.key1 or request.params['keys']['key1']
+    ```
 
 #### Execution
 

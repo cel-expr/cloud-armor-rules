@@ -19,6 +19,9 @@ expr: >
       request.path == '/search' &&
       request.query == 'q=google%21' &&
       request.scheme == 'https' &&
+      # request.body.contains('bad_data') &&
+      # request.params['key1'] == 'value1' &&
+      # request.params['key2']['nested_key'] == 'nested_value' &&
       origin.ip == '1.2.3.4' &&
       origin.region_code == 'US' &&
       token.recaptcha_exemption.valid &&
@@ -36,6 +39,11 @@ tests:
         path: "/search"
         query: "q=google%21"
         scheme: "https"
+        body: "some random bad_data here"
+        params:
+          key1: "value1"
+          key2:
+            nested_key: "nested_value"
       origin:
         ip: "1.2.3.4"
         region_code: "US"
