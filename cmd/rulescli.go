@@ -18,7 +18,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/google/cel-go/cel"
 	"google.golang.org/protobuf/encoding/prototext"
@@ -33,21 +35,26 @@ const textFmtHeader = `# proto-file: github.com/google/cel-spec/proto/checked.pr
 `
 
 type options struct {
-	compile, test string
-	outputFormat  string
+	expr, file, test      string
+	outputFormat, version string
+	verbose               bool
 }
 
 func (o *options) registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.test, "test", "", "file containing test suites for a rule expression")
-	fs.StringVar(&o.compile, "compile", "", "CEL expression representing the Cloud Armor rule")
-	fs.StringVar(&o.outputFormat, "output_format", "textproto", "output format (textproto, binarypb)")
+	fs.StringVar(&o.expr, "expr", "", "CEL expression representing the Cloud Armor rule")
+	fs.StringVar(&o.file, "file", "", "File containing CEL expressions representing the Cloud Armor rule")
+	fs.StringVar(&o.outputFormat, "output_format", "", "output format (textproto, binarypb)")
+	fs.StringVar(&o.version, "version", "VCurrent", "valid versions (VCurrent, VNext)")
+	fs.BoolVar(&o.verbose, "verbose", false, "Enable verbose logging")
 }
 
 func (o *options) validate() error {
-	if o.compile == "" && o.test == "" {
-		return fmt.Errorf("either -compile=<expression> or -test=<test_suite_file> is required")
+	if o.expr == "" && o.file == "" && o.test == "" {
+		return fmt.Errorf("either -expr=<expression> or -file=<file> or -test=<test_suite_file> is required")
 	}
-	if o.compile != "" && o.outputFormat != "textproto" && o.outputFormat != "binarypb" {
+	if o.expr != "" && o.outputFormat != "" &&
+		o.outputFormat != "textproto" && o.outputFormat != "binarypb" {
 		return fmt.Errorf("unsupported -output_format=%s, must be textproto or binarypb", o.outputFormat)
 	}
 	return nil
@@ -57,8 +64,19 @@ type rules struct {
 	*cloudarmor.Rules
 }
 
-func newRules() *rules {
-	r, err := cloudarmor.NewRules()
+func verboseLog(enabled bool, message string, args ...any) {
+	if enabled {
+		fmt.Printf(message+"\n", args...)
+	}
+}
+
+func newRules(ver string) *rules {
+	version := cloudarmor.VCurrent
+	if ver == "VNext" {
+		version = cloudarmor.VNext
+	}
+
+	r, err := cloudarmor.NewRules(cloudarmor.Version(version))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create rules environment: %v\n", err)
 		os.Exit(1)
@@ -66,13 +84,58 @@ func newRules() *rules {
 	return &rules{r}
 }
 
-func (r *rules) newAST(expr string) *cel.Ast {
+func (r *rules) processExprFile(filename string, outputFormat string, verbose bool) error {
+	verboseLog(verbose, "Reading file: %s", filename)
+	file, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		fmt.Println("Failed to open file:", filename)
+		return err
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Println("Failed to read file content:", filename)
+		return err
+	}
+
+	expressions := strings.Split(string(content), ";") // Expressions are separated by delimiter ';'
+
+	LineNumber := 1
+	for index, expr := range expressions {
+		LineNumber += strings.Count(expr, "\n")
+		expr = strings.TrimSpace(expr)
+		if expr == "" {
+			continue
+		}
+
+		verboseLog(verbose, "Processing expr at index: %d, line: %d, expr: %s", index, LineNumber, expr)
+
+		ast, ok := r.newAST(expr)
+		if !ok {
+			return fmt.Errorf("failed to compile expression: %v", expr)
+		}
+		verboseLog(verbose, "Successfully compiled expression: %v", expr)
+
+		r.printAST(ast, outputFormat)
+	}
+
+	return nil
+}
+
+func (r *rules) newAST(expr string) (*cel.Ast, bool) {
+
+	// Convert bracket notation to dot notation
+	if strings.Contains(expr, "request.params") {
+		expr = strings.ReplaceAll(expr, "['", ".")
+		expr = strings.ReplaceAll(expr, "']", "")
+	}
 	ast, err := r.Compile(expr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to compile expression: %v\n", err)
-		os.Exit(1)
+		return nil, false
 	}
-	return ast
+	return ast, true
 }
 
 func (r *rules) printAST(ast *cel.Ast, outputFormat string) {
@@ -83,7 +146,7 @@ func (r *rules) printAST(ast *cel.Ast, outputFormat string) {
 	}
 	if outputFormat == "textproto" {
 		fmt.Println(textFmtHeader + prototext.Format(pb))
-	} else {
+	} else if outputFormat == "binarypb" {
 		fmt.Println(proto.MarshalOptions{Deterministic: true}.Marshal(pb))
 	}
 }
@@ -101,18 +164,35 @@ func main() {
 	var opts options
 	opts.registerFlags(flag.CommandLine)
 	flag.Parse()
-	if len(flag.Args()) != 0 {
-		fmt.Fprintf(os.Stderr, "unexpected arguments: %v\n", flag.Args())
-		os.Exit(1)
+
+	// Handle default expression
+	args := flag.Args()
+	if len(args) > 0 {
+		opts.expr = args[0] // Assign default argument to `expr`
 	}
+
 	if err := opts.validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "invalid options: %v\n", err)
 		os.Exit(1)
 	}
-	r := newRules()
-	if opts.compile != "" {
-		ast := r.newAST(opts.compile)
-		r.printAST(ast, opts.outputFormat)
+
+	r := newRules(opts.version)
+
+	if opts.expr != "" {
+		ast, ok := r.newAST(opts.expr)
+		if ok {
+			r.printAST(ast, opts.outputFormat)
+			os.Exit(0)
+		} else {
+			os.Exit(1)
+		}
+	}
+	if opts.file != "" {
+		err := r.processExprFile(opts.file, opts.outputFormat, opts.verbose)
+		if err != nil {
+			fmt.Println("Error processing file:", err)
+			os.Exit(1)
+		}
 		os.Exit(0)
 	}
 
@@ -126,9 +206,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to parse test suite: %v\n", err)
 		os.Exit(1)
 	}
-	ast := r.newAST(ts.Expr)
+	ast, ok := r.newAST(ts.Expr)
+	if !ok {
+		os.Exit(1)
+	}
+
 	prg := r.newProgram(ast)
-	statuses := r.RunTestSuite(prg, ts.Tests)
+	statuses := r.RunRuleValidation(prg, ts.Tests)
 	for _, s := range statuses {
 		if s.Fail != "" {
 			fmt.Fprintf(os.Stderr, "FAIL %s/%s: %s\n", ts.Name, s.Name, s.Fail)

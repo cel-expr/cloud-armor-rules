@@ -54,6 +54,9 @@ func SafeVariables(v *Variables) *Variables {
 	for k, val := range v.Request.Headers {
 		v.Request.Headers[strings.ToLower(k)] = val
 	}
+	if v.Request.Params == nil {
+		v.Request.Params = make(map[string]any)
+	}
 	if v.Origin == nil {
 		v.Origin = &Origin{}
 	}
@@ -90,6 +93,10 @@ func (v *Variables) ResolveName(name string) (any, bool) {
 		return v.Request.Query, true
 	case "request.scheme":
 		return v.Request.Scheme, true
+	case "request.params":
+		return v.Request.Params, true
+	case "request.body":
+		return v.Request.Body, true
 	case "origin.ip":
 		return v.Origin.IP, true
 	case "origin.region_code":
@@ -154,6 +161,8 @@ type Request struct {
 	Path    string            `yaml:"path"`
 	Query   string            `yaml:"query"`
 	Scheme  string            `yaml:"scheme"`
+	Params  map[string]any    `yaml:"params"`
+	Body    string            `yaml:"body"`
 }
 
 // Origin represents the origin attributes available to the Cloud Armor expression.

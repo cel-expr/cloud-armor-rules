@@ -61,3 +61,30 @@ func TestVariablesFromYAML(t *testing.T) {
 		t.Errorf("v.Token.RecaptchaSession.Valid = %v, want %v", v.Token.RecaptchaSession.Valid, true)
 	}
 }
+
+func TestRequestParams(t *testing.T) {
+	params := map[string]any{
+		"key": "value",
+		"nested": map[string]any{
+			"key2": "nestedvalue",
+		},
+	}
+
+	v := &cloudarmor.Variables{
+		Request: &cloudarmor.Request{
+			Params: params,
+		},
+	}
+
+	if v.Request.Params["key"] != "value" {
+		t.Errorf("v.Request.Params['key'] = %v, want value", v.Request.Params["key"])
+	}
+
+	nestedParams, ok := v.Request.Params["nested"].(map[string]any)
+	if !ok {
+		t.Fatalf("v.Request.Params['nested'] is not a map")
+	}
+	if nestedParams["key2"] != "nestedvalue" {
+		t.Errorf("v.Request.Params['nested']['key2'] = %v, want nestedvalue", nestedParams["key2"])
+	}
+}

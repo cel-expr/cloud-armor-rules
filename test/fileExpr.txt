@@ -1,0 +1,10 @@
+request.method == "POST" &&
+request.query.contains('XyZ');
+request.path.startsWith('path');;
+
+request.path.startsWith('path1') || request.path.startsWith('path2');
+request.scheme == 'http'; request.scheme == 'https';
+request.headers['User-Agent'].contains('Chrome');
+
+request.scheme == 'http' && request.method == 'GET' ||
+request.path.startsWith('/path');
