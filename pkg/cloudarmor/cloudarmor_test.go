@@ -409,7 +409,7 @@ func TestRules(t *testing.T) {
 }
 
 func TestRunTestSuite(t *testing.T) {
-	tsData, err := os.ReadFile("experimental/users/tswadell/cloudarmor/testdata/http-tests.yaml")
+	tsData, err := os.ReadFile("../../test/http-tests.yaml")
 	if err != nil {
 		t.Fatalf("os.ReadFile() returned error: %v", err)
 	}
