@@ -52,6 +52,40 @@ var tests = []struct {
 		want: types.False,
 	},
 	{
+		name: "inequality success",
+		expr: "request.method != 'POST'",
+		vars: &cloudarmor.Variables{
+			Request: &cloudarmor.Request{
+				Method: "GET",
+			},
+		},
+		want: types.True,
+	},
+	{
+		name: "has header - select",
+		expr: "has(request.headers.user_agent)",
+		vars: &cloudarmor.Variables{
+			Request: &cloudarmor.Request{
+				Headers: cloudarmor.HTTPHeaders(map[string]string{
+					"user_agent": "found",
+				}),
+			},
+		},
+		want: types.True,
+	},
+	{
+		name: "has header - index",
+		expr: "has(request.headers['user-agent'])",
+		vars: &cloudarmor.Variables{
+			Request: &cloudarmor.Request{
+				Headers: cloudarmor.HTTPHeaders(map[string]string{
+					"user-agent": "found",
+				}),
+			},
+		},
+		want: types.True,
+	},
+	{
 		name: "inIpRange success",
 		expr: "inIpRange(origin.ip, '192.168.0.0/16')",
 		vars: &cloudarmor.Variables{
