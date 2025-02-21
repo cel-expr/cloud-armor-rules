@@ -1,0 +1,234 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: cloud-armor-v2
+stdlib:
+  # Cloud Armor supports the has() macro; however, the implementation differs
+  # from the CEL-Spec in that it supports has(field.selection) as well as
+  # has(map["key"]) for presence testing.
+  disable_macros: true
+  include_functions:
+      - name: _&&_
+      - name: _||_
+      - name: '!_'
+      - name: _<_
+        overloads:
+          - id: less_int64
+          - id: less_double
+      - name: _<=_
+        overloads:
+          - id: less_equals_int64
+          - id: less_equals_double
+      - name: _>_
+        overloads:
+          - id: greater_int64
+          - id: greater_double
+      - name: _>=_
+        overloads:
+          - id: greater_equals_int64
+          - id: greater_equals_double
+      - name: '@in'
+        overloads:
+          - id: in_map
+      - name: _[_]
+      - name: _+_
+        overloads:
+          - id: add_int64
+          - id: add_double
+          - id: add_string
+      - name: _-_
+        overloads:
+          - id: subtract_int64
+          - id: subtract_double
+      - name: _*_
+        overloads:
+          - id: multiply_int64
+          - id: multiply_double
+      - name: size
+        overloads:
+          - id: size_string
+          - id: string_size
+      - name: int
+        overloads:
+          - id: string_to_int64
+          - id: int64_to_int64
+      - name: matches
+      - name: contains
+      - name: endsWith
+      - name: startsWith
+
+variables:
+  - name: request.method
+    type_name: string
+  - name: request.headers
+    type_name: map
+    params:
+      - type_name: string
+      - type_name: dyn
+  - name: request.path
+    type_name: string
+  - name: request.query
+    type_name: string
+  - name: request.scheme
+    type_name: string
+  - name: origin.ip
+    type_name: string
+  - name: origin.region_code
+    type_name: string
+  - name: origin.asn
+    type_name: int
+  - name: origin.user_ip
+    type_name: string
+  - name: origin.tls_ja3_fingerprint
+    type_name: string
+  - name: origin.tls_ja4_fingerprint
+    type_name: string
+  - name: token.recaptcha_exemption.valid
+    type_name: bool
+  - name: token.recaptcha_action.score
+    type_name: double
+  - name: token.recaptcha_action.captcha_status
+    type_name: string
+  - name: token.recaptcha_action.action
+    type_name: string
+  - name: token.recaptcha_action.valid
+    type_name: bool
+  - name: token.recaptcha_session.score
+    type_name: double
+  - name: token.recaptcha_session.valid
+    type_name: bool
+  # Cloud Armor v2 supported attributes
+  - name: request.body
+    type_name: string
+  - name: request.params
+    type_name: map
+    params:
+      - type_name: string
+      - type_name: dyn
+
+functions:
+  # Standard equality for CEL is disabled and specific type-by-type overloads
+  # are specified instead.
+  - name: _==_
+    overloads:
+      - id: equals_bool
+        args:
+          - type_name: bool
+          - type_name: bool
+        return:
+          type_name: bool
+      - id: equals_double
+        args:
+          - type_name: double
+          - type_name: double
+        return:
+          type_name: bool
+      - id: equals_int64
+        args:
+          - type_name: int
+          - type_name: int
+        return:
+          type_name: bool
+      - id: equals_string
+        args:
+          - type_name: string
+          - type_name: string
+        return:
+          type_name: bool
+  - name: _!=_
+    overloads:
+      - id: not_equals_bool
+        args:
+          - type_name: bool
+          - type_name: bool
+        return:
+          type_name: bool
+      - id: not_equals_double
+        args:
+          - type_name: double
+          - type_name: double
+        return:
+          type_name: bool
+      - id: not_equals_int64
+        args:
+          - type_name: int
+          - type_name: int
+        return:
+          type_name: bool
+      - id: not_equals_string
+        args:
+          - type_name: string
+          - type_name: string
+        return:
+          type_name: bool
+
+  # Cloud Armor specific functions
+  - name: inIpRange
+    overloads:
+      - id: inIpRange_string
+        args:
+          - type_name: string
+          - type_name: string
+        return:
+          type_name: bool
+  - name: lower
+    overloads:
+      - id: string_lower
+        target:
+          type_name: string
+        return:
+          type_name: string
+  - name: upper
+    overloads:
+      - id: string_upper
+        target:
+          type_name: string
+        return:
+          type_name: string
+  - name: base64Decode
+    overloads:
+      - id: base64Decode_string
+        target:
+          type_name: string
+        return:
+          type_name: string
+  - name: urlDecode
+    overloads:
+      - id: urlDecode_string
+        target:
+          type_name: string
+        return:
+          type_name: string
+  - name: urlDecodeUni
+    overloads:
+      - id: urlDecodeUni_string
+        target:
+          type_name: string
+        return:
+          type_name: string
+  - name: utf8ToUnicode
+    overloads:
+      - id: utf8ToUnicode_string
+        target:
+          type_name: string
+        return:
+          type_name: string
+validators:
+  - name: cel.validator.duration
+  - name: cel.validator.timestamp
+  - name: cel.validator.matches
+  - name: cel.validator.homogeneous_literals
+features:
+  - name: cel.feature.backtick_escape_syntax
+    enabled: true

@@ -17,6 +17,7 @@
 package cloudarmor
 
 import (
+	_ "embed"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -28,12 +29,12 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/ast"
-	"github.com/google/cel-go/common/decls"
+	"github.com/google/cel-go/common/env"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/overloads"
-	"github.com/google/cel-go/common/stdlib"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -42,6 +43,12 @@ const (
 	// VNext supports the next set of variables and functions to be enabled in Cloud Armor
 	VNext uint32 = 2
 )
+
+//go:embed config/cloud-armor-v1.yaml
+var cloudArmorV1 string
+
+//go:embed config/cloud-armor-v2.yaml
+var cloudArmorV2 string
 
 // Rules represents a Cloud Armor rules environment.
 type Rules struct {
@@ -81,13 +88,14 @@ func NewRules(options ...RulesOption) (*Rules, error) {
 			return nil, err
 		}
 	}
-	rules.env, err = cel.NewCustomEnv(cel.Lib(&library{version: rules.version}))
+	rules.env, err = cel.NewCustomEnv(
+		compileOptions(rules.version)...,
+	)
 	return rules, err
 }
 
 // Compile compiles the given expression into a cel.Ast or returns a set of issues.
 func (r *Rules) Compile(expr string) (*cel.Ast, error) {
-
 	ast, iss := r.env.Compile(expr)
 	if iss != nil {
 		return nil, iss.Err()
@@ -102,7 +110,8 @@ func (r *Rules) Compile(expr string) (*cel.Ast, error) {
 // options which can be used to alter how the expression evaluates to capture information like
 // intermediate evaluation results.
 func (r *Rules) Program(ast *cel.Ast, prgOpts ...cel.ProgramOption) (cel.Program, error) {
-	return r.env.Program(ast, prgOpts...)
+	opts := append([]cel.ProgramOption{cel.EvalOptions(cel.OptOptimize)}, prgOpts...)
+	return r.env.Program(ast, opts...)
 }
 
 // RunRuleValidation runs a test suite against the an expression.
@@ -143,133 +152,36 @@ func (r *Rules) RunRuleValidation(prg cel.Program, testCases []*TestCase) []Test
 	return statuses
 }
 
-type library struct {
-	version uint32
-}
-
-func (lib *library) LibraryName() string {
-	return "google.cloud.armor.ext"
-}
-
-func (lib *library) CompileOptions() []cel.EnvOption {
+func compileOptions(version uint32) []cel.EnvOption {
 	options := []cel.EnvOption{
-		// Ensure that expressions are checked for common issues.
-		cel.DefaultUTCTimeZone(true),
-		cel.ExtendedValidations(),
-		cel.EnableIdentifierEscapeSyntax(),
-
 		// Replace the standard macros with a single custom has macro.
 		cel.ClearMacros(),
 		cel.Macros(cel.GlobalMacro("has", 1, hasWithIndexMacroFactory)),
+
+		// Load the environment configuration
+		func(e *cel.Env) (*cel.Env, error) {
+			cloudArmorVersion := "cloud-armor-v1"
+			cloudArmorConfig := cloudArmorV1
+			switch version {
+			case 1:
+				break
+			case 2:
+				cloudArmorConfig = cloudArmorV2
+			default:
+				return nil, fmt.Errorf("unsupported cloud armor version: v%d", version)
+			}
+			c := env.NewConfig(cloudArmorVersion)
+			if err := yaml.Unmarshal([]byte(cloudArmorConfig), c); err != nil {
+				return nil, err
+			}
+			return cel.FromConfig(c)(e)
+		},
 	}
-	options = append(options, cloudArmorVariables(lib.version)...)
-	options = append(options, cloudArmorFunctions(lib.version)...)
+	options = append(options, cloudArmorFunctions(version)...)
 	return options
 }
 
-func (lib *library) ProgramOptions() []cel.ProgramOption {
-	return []cel.ProgramOption{
-		cel.EvalOptions(cel.OptOptimize),
-	}
-}
-
-func cloudArmorVariables(version uint32) []cel.EnvOption {
-	envOptions := []cel.EnvOption{
-		// Request attributes
-		cel.Variable("request.method", cel.StringType),
-		cel.Variable("request.headers", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("request.path", cel.StringType),
-		cel.Variable("request.query", cel.StringType),
-		cel.Variable("request.scheme", cel.StringType),
-		// Origin attributes
-		cel.Variable("origin.ip", cel.StringType),
-		cel.Variable("origin.region_code", cel.StringType),
-		cel.Variable("origin.asn", cel.IntType),
-		cel.Variable("origin.user_ip", cel.StringType),
-		cel.Variable("origin.tls_ja3_fingerprint", cel.StringType),
-		cel.Variable("origin.tls_ja4_fingerprint", cel.StringType),
-		// reCaptcha exemption attributes
-		cel.Variable("token.recaptcha_exemption.valid", cel.BoolType),
-		// reCaptcha action attributes
-		cel.Variable("token.recaptcha_action.score", cel.DoubleType),
-		cel.Variable("token.recaptcha_action.captcha_status", cel.StringType),
-		cel.Variable("token.recaptcha_action.action", cel.StringType),
-		cel.Variable("token.recaptcha_action.valid", cel.BoolType),
-		// reCaptcha session attributes
-		cel.Variable("token.recaptcha_session.score", cel.DoubleType),
-		cel.Variable("token.recaptcha_session.valid", cel.BoolType),
-	}
-
-	// Introduce new fields only if version >= VNext
-	if version >= VNext {
-		envOptions = append(envOptions,
-			cel.Variable("request.body", cel.StringType),
-			// request.params is parsed form of request.body and request.query
-			cel.Variable("request.params", cel.MapType(cel.StringType, cel.DynType)),
-		)
-	}
-	return envOptions
-}
-
-func cloudArmorFunctions(version uint32) []cel.EnvOption {
-	permittedFunctions := map[string][]string{
-		// logical operators
-		operators.LogicalAnd: {},
-		operators.LogicalOr:  {},
-		operators.LogicalNot: {},
-		// ordering
-		operators.Less: {
-			overloads.LessInt64,
-			overloads.LessDouble,
-		},
-		operators.LessEquals: {
-			overloads.LessEqualsInt64,
-			overloads.LessEqualsDouble,
-		},
-		operators.Greater: {
-			overloads.GreaterInt64,
-			overloads.GreaterDouble,
-		},
-		operators.GreaterEquals: {
-			overloads.GreaterEqualsInt64,
-			overloads.GreaterEqualsDouble,
-		},
-		// set relations, indexing
-		operators.In: {
-			overloads.InMap,
-		},
-		operators.Index: {},
-		// arithmetic
-		operators.Add: {
-			overloads.AddInt64,
-			overloads.AddDouble,
-			overloads.AddString,
-		},
-		operators.Subtract: {
-			overloads.SubtractDouble,
-			overloads.SubtractInt64,
-		},
-		operators.Multiply: {
-			overloads.MultiplyDouble,
-			overloads.MultiplyInt64,
-		},
-		// string operations
-		overloads.Size: {
-			overloads.SizeString,
-		},
-		overloads.TypeConvertInt: {
-			overloads.StringToInt,
-			overloads.IntToInt,
-		},
-		overloads.Matches:    {},
-		overloads.Contains:   {},
-		overloads.EndsWith:   {},
-		overloads.StartsWith: {},
-
-		// forward compatibility with macros
-		operators.NotStrictlyFalse: {},
-	}
-
+func cloudArmorFunctions(_ uint32) []cel.EnvOption {
 	// Normally equality is type parameterized; however, we only support a subset of types.
 	funcs := []cel.EnvOption{
 		cel.Function(operators.Equals,
@@ -277,18 +189,12 @@ func cloudArmorFunctions(version uint32) []cel.EnvOption {
 			cel.Overload(overloads.Equals+"_double", []*cel.Type{cel.DoubleType, cel.DoubleType}, cel.BoolType),
 			cel.Overload(overloads.Equals+"_int64", []*cel.Type{cel.IntType, cel.IntType}, cel.BoolType),
 			cel.Overload(overloads.Equals+"_string", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType),
-			cel.SingletonBinaryBinding(func(lhs, rhs ref.Val) ref.Val {
-				return lhs.Equal(rhs)
-			}),
 		),
 		cel.Function(operators.NotEquals,
 			cel.Overload(overloads.NotEquals+"_bool", []*cel.Type{cel.BoolType, cel.BoolType}, cel.BoolType),
 			cel.Overload(overloads.NotEquals+"_double", []*cel.Type{cel.DoubleType, cel.DoubleType}, cel.BoolType),
 			cel.Overload(overloads.NotEquals+"_int64", []*cel.Type{cel.IntType, cel.IntType}, cel.BoolType),
 			cel.Overload(overloads.NotEquals+"_string", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType),
-			cel.SingletonBinaryBinding(func(lhs, rhs ref.Val) ref.Val {
-				return types.Bool(lhs.Equal(rhs) != types.True)
-			}),
 		),
 		cel.Function("inIpRange", cel.Overload("inIpRange_string", []*cel.Type{cel.StringType, cel.StringType}, cel.BoolType,
 			cel.BinaryBinding(func(ip, ipRange ref.Val) ref.Val {
@@ -338,19 +244,7 @@ func cloudArmorFunctions(version uint32) []cel.EnvOption {
 				return utf8ToUnicodeString(s)
 			}))),
 	}
-
-	stdLibSubset := []*decls.FunctionDecl{}
-	for _, fn := range stdlib.Functions() {
-		overloads, found := permittedFunctions[fn.Name()]
-		if !found {
-			continue
-		}
-		if len(overloads) != 0 {
-			fn = fn.Subset(cel.IncludeOverloads(overloads...))
-		}
-		stdLibSubset = append(stdLibSubset, fn)
-	}
-	return append(funcs, cel.FunctionDecls(stdLibSubset...))
+	return funcs
 }
 
 func hasWithIndexMacroFactory(mef cel.MacroExprFactory, target ast.Expr, args []ast.Expr) (ast.Expr, *cel.Error) {
@@ -368,7 +262,7 @@ func hasWithIndexMacroFactory(mef cel.MacroExprFactory, target ast.Expr, args []
 	if call.FunctionName() != operators.Index {
 		return nil, nil
 	}
-	if call.Target() != nil || len(call.Args()) != 2 {
+	if call.IsMemberFunction() || len(call.Args()) != 2 {
 		return nil, nil
 	}
 	obj := call.Args()[0]

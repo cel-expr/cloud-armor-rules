@@ -3,7 +3,7 @@ module github.com/cel-expr/cloud-armor-rules
 go 1.24
 
 require (
-	github.com/google/cel-go v0.24.0-alpha
+	github.com/google/cel-go v0.24.0-beta
 	google.golang.org/protobuf v1.36.4
 	gopkg.in/yaml.v3 v3.0.1
 )
