@@ -23,6 +23,7 @@ stdlib:
       - exists_one
       - filter
   include_functions:
+      - name: "@not_strictly_false"
       - name: _&&_
       - name: _||_
       - name: '!_'
