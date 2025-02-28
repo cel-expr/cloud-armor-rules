@@ -94,6 +94,11 @@ func NewRules(options ...RulesOption) (*Rules, error) {
 	return rules, err
 }
 
+// Env returns the cel.Env object for the Rules object.
+func (r *Rules) Env() *cel.Env {
+	return r.env
+}
+
 // Compile compiles the given expression into a cel.Ast or returns a set of issues.
 func (r *Rules) Compile(expr string) (*cel.Ast, error) {
 	ast, iss := r.env.Compile(expr)
