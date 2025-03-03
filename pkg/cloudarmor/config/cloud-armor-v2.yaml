@@ -17,8 +17,13 @@ stdlib:
   # Cloud Armor supports the has() macro; however, the implementation differs
   # from the CEL-Spec in that it supports has(field.selection) as well as
   # has(map["key"]) for presence testing.
-  disable_macros: true
+  include_macros:
+      - exists
+      - all
+      - exists_one
+      - filter
   include_functions:
+      - name: "@not_strictly_false"
       - name: _&&_
       - name: _||_
       - name: '!_'
