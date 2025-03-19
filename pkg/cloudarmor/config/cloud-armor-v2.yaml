@@ -43,9 +43,6 @@ stdlib:
         overloads:
           - id: greater_equals_int64
           - id: greater_equals_double
-      - name: '@in'
-        overloads:
-          - id: in_map
       - name: _[_]
       - name: _+_
         overloads:
