@@ -34,7 +34,10 @@ import (
 	"github.com/google/cel-go/common/overloads"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"google.golang.org/protobuf/encoding/prototext"
 	"gopkg.in/yaml.v3"
+
+	pb "github.com/cel-expr/cloud-armor-rules/pkg/cloudarmor/proto"
 )
 
 const (
@@ -412,4 +415,17 @@ func utf8ToUnicodeString(str string) ref.Val {
 		}
 	}
 	return types.String(sb.String())
+}
+
+func ParseVendorRuleset(content []byte) error {
+
+	var rulesetCollection pb.VendorRulesetCollection
+
+	// Unmarshal the text-formatted content into the struct.
+	err := prototext.Unmarshal(content, &rulesetCollection)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal VendorRulesetCollection: %w", err)
+	}
+
+	return nil
 }

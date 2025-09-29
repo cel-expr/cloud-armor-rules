@@ -34,6 +34,21 @@ bazel_dep(
     version = "0.39.1",
     repo_name = "bazel_gazelle",
 )
+bazel_dep(
+    name = "rules_proto",
+    version = "7.0.2",
+)
+
+bazel_dep(
+    name = "rules_proto_grpc",
+    version = "5.0.1",
+)
+
+bazel_dep(
+    name = "protobuf",
+    version = "29.0",
+    repo_name = "com_google_protobuf",
+)
 
 go_deps = use_extension("@bazel_gazelle//:extensions.bzl", "go_deps")
 go_deps.gazelle_override(
