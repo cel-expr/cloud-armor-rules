@@ -8,6 +8,7 @@ go_library(
         "cloudarmor.go",
         "testsuite.go",
         "variables.go",
+        "vendor_ruleset_collection.pb.go",
     ],
     embedsrcs = ["//pkg/cloudarmor/config"],
     importpath = "github.com/cel-expr/cloud-armor-rules/pkg/cloudarmor",

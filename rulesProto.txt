@@ -1,0 +1,30 @@
+uuid: "uuid-1234"
+ruleset_metadata {
+  owner: "Imperva"
+  description: "Detects attempts to access restricted files"
+}
+
+rule_sets {
+  category: "Path-Traversal/LFI"
+  change_log {
+    description: "Detects attempts to access restricted files "
+    always_public: true
+    use_for_cve: true
+  }
+
+  transformations: "HEX_DECODE"
+  transformations: "NORMALIZE_PATH_WIN"
+  transformations: "COMPRESS_WHITESPACE"
+
+  rules {
+    id: "973566"
+    cel_expression: "request.params.exists(x, request.params[x].contains('abc/123')) && request.params['xyz'] != null"
+    e2e_test_command: "curl -X GET \"http://example.com/?cmd=etc%hosts\""
+  }
+
+  rules {
+    id: "323062"
+    cel_expression: "request.params.exists(x, request.params[x].contains('cba/323')) && request.params['xyz'] != null"
+    e2e_test_command: "curl -X GET \"http://example.com/?cmd=etc%hosts\""
+  }
+}
