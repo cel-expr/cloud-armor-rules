@@ -180,7 +180,7 @@ func processVendorRuleset(filename string, verbose bool) error {
 		return parseErr
 	}
 
-	verboseLog(verbose, "Successfully validated vendor ruleset")
+	fmt.Printf("Successfully validated vendor ruleset. \n")
 	return nil
 }
 
