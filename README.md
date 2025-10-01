@@ -336,7 +336,7 @@ The `-textproto=<filename>` flag is used to validate a file containing a `Vendor
 
 **Example Usage:**
 
-Assuming you have a file named `my_ruleset.txt` with content in the `VendorRulesetCollection` format:
+Assuming you have a file named `my_ruleset.textproto` with content in the `VendorRulesetCollection` format:
 
 ```textproto
 # A sample VendorRulesetCollection
@@ -358,7 +358,7 @@ rule_sets: {
 You can validate this file by running the following command. If the file is valid, the command will exit successfully. If there are syntactical errors, it will print them to the console.
 
 ```sh
-./rulescli -textproto="my_ruleset.txt"
+./rulescli -textproto="my_ruleset.textproto"
 ```
 
 Disclaimer: This is not an official Google project

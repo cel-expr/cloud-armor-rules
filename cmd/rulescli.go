@@ -47,7 +47,7 @@ func (o *options) registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.file, "file", "", "File containing CEL expressions representing the Cloud Armor rule")
 	fs.StringVar(&o.outputFormat, "output_format", "", "output format (textproto, binarypb)")
 	fs.StringVar(&o.version, "version", "VCurrent", "valid versions (VCurrent, VNext)")
-	fs.StringVar(&o.textproto, "textproto", "", "File containing the VendorRulesetCollection ruleset textproto")
+	fs.StringVar(&o.textproto, "textproto", "", "File containing the rulesets as proto defined in VendorRulesetCollection")
 	fs.BoolVar(&o.verbose, "verbose", false, "Enable verbose logging")
 }
 
