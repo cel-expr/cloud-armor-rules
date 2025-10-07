@@ -1,0 +1,109 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/cel-expr/cloud-armor-rules/pkg/cloudarmor/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// Vendor ruleset collection initially provided by Vendor
+// This represents the initial set of data provided by the Vendor.
+// For further details, please refer to shared(Google and Imperva) design doc:
+// go/imperva-google-mgdrules-integration
+message VendorRulesetCollection {
+  // Next ID: 4
+  // Unique ID associated with the ruleset collection
+  string uuid = 1;
+
+  // Metadata shared across Rulesets
+  message RulesetMetadata {
+    // Next ID: 6
+    // ruleset creation date
+    google.protobuf.Timestamp creation_date = 1;
+
+    // ruleset modification date
+    google.protobuf.Timestamp updation_date = 2;
+
+    // Name of the owner of the rulesets, e.g.   Imperva
+    string owner = 3;
+
+    // A description of the ruleset's purpose
+    string description = 4;
+
+    // Encryption key identifier
+    string encryptionkey_id = 5;
+  }
+
+  // Metadata for the ruleset
+  RulesetMetadata ruleset_metadata = 2;
+
+  // Collection of vendor rulesets
+  repeated VendorRuleSet rule_sets = 3;
+}
+
+// Vendor rulesets containing rules for specific category, e.g. sqli, xss
+message VendorRuleSet {
+  // Next ID: 7
+  // Name of the ruleset provided by Vendor
+  string name = 1;
+
+  // Version of the ruleset provided by Vendor, if any.
+  string version = 2;
+
+  // Category of the ruleset, e.g. SQLi, XSS
+  string category = 3;
+
+  // ChangeLog for the ruleset
+  message ChangeLog {
+    // This will be used to surface changelog information through
+    // documentation
+    string description = 1;
+
+    // this determines whether the ruleset description should be public
+    // e.g. Included in the release notes
+    bool always_public = 2;
+
+    // this is set if it should be included in a CVE release
+    bool use_for_cve = 3;
+  }
+
+  // Release notes corresponding to the rulesets
+  ChangeLog change_log = 4;
+
+  // Transformations should be applied sequentially to the input request
+  // before evaluating CEL Expression
+  // Rule shall be evaluated only once all the transformations were applied.
+  repeated string transformations = 5;
+
+  // Rule from the Vendor ruleset.
+  // It would only exist in the initial set of rules provided by the Vendor.
+  message VendorRule {
+    // Next ID: 7
+    // Unique ID associated with each rule
+    // For incremental updates, the rule ID remains unchanged but follows a
+    // versioning format. Example: id191190.0 to id191190.1
+    string id = 1;
+
+    // CEL expression
+    // Defines the rule logic in CEL string format using Cloud Armor (CA)
+    // attributes.
+    string cel_expression = 2;
+
+    // Array of Key value pairs of tags and additional info associated
+    // with the tag separated by ':'
+    repeated string tags = 3;
+
+    // Curl commands that would generate the matching expression for rule
+    repeated string e2e_test_command = 4;
+
+    // This field is reserved for the initial version of the ruleset
+    // defined by the Vendor.
+    reserved 5;
+
+    // By default, it would be false.
+    // If true, the rule shall only be evaluated if enabled by customers.
+    bool opt_in = 6;
+  }
+  // collection of rules under the ruleset
+  repeated VendorRule rules = 6;
+}

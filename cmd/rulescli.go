@@ -37,6 +37,7 @@ const textFmtHeader = `# proto-file: github.com/google/cel-spec/proto/checked.pr
 type options struct {
 	expr, file, test      string
 	outputFormat, version string
+	textproto             string
 	verbose               bool
 }
 
@@ -46,12 +47,13 @@ func (o *options) registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.file, "file", "", "File containing CEL expressions representing the Cloud Armor rule")
 	fs.StringVar(&o.outputFormat, "output_format", "", "output format (textproto, binarypb)")
 	fs.StringVar(&o.version, "version", "VCurrent", "valid versions (VCurrent, VNext)")
+	fs.StringVar(&o.textproto, "textproto", "", "File containing the rulesets as proto defined in VendorRulesetCollection")
 	fs.BoolVar(&o.verbose, "verbose", false, "Enable verbose logging")
 }
 
 func (o *options) validate() error {
-	if o.expr == "" && o.file == "" && o.test == "" {
-		return fmt.Errorf("either -expr=<expression> or -file=<file> or -test=<test_suite_file> is required")
+	if o.expr == "" && o.file == "" && o.test == "" && o.textproto == "" {
+		return fmt.Errorf("either -expr=<expression> or -file=<file> or -test=<test_suite_file> or -textproto=<textproto_file> is required")
 	}
 	if o.expr != "" && o.outputFormat != "" &&
 		o.outputFormat != "textproto" && o.outputFormat != "binarypb" {
@@ -160,6 +162,28 @@ func (r *rules) newProgram(ast *cel.Ast) cel.Program {
 	return prg
 }
 
+func processVendorRuleset(filename string, verbose bool) error {
+	verboseLog(verbose, "Reading vendor ruleset file: %s", filename)
+	content, err := os.ReadFile(filename)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to read vendor ruleset file: %v\n", err)
+	}
+
+	rulesetCollection := cloudarmor.VendorRulesetCollection{}
+
+	// Unmarshal the text-formatted content into the struct.
+	parseErr := prototext.Unmarshal(content, &rulesetCollection)
+
+	if parseErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse vendor ruleset file as VendorRulesetCollection: %v\n", parseErr)
+		return parseErr
+	}
+
+	fmt.Printf("Successfully validated vendor ruleset. \n")
+	return nil
+}
+
 func main() {
 	var opts options
 	opts.registerFlags(flag.CommandLine)
@@ -177,6 +201,14 @@ func main() {
 	}
 
 	r := newRules(opts.version)
+
+	if opts.textproto != "" {
+		if err := processVendorRuleset(opts.textproto, opts.verbose); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to process vendor ruleset: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	if opts.expr != "" {
 		ast, ok := r.newAST(opts.expr)

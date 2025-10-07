@@ -18,7 +18,9 @@ executed using `./rulescli` to provide a basic usage message.
 
 ## Usage
 
-The CLI provides three modes `-expr`, `-file` and `-test`.
+The CLI provides four modes `-expr`, `-file`, `-test` and `-textproto`.
+
+
 
 ### expr
 
@@ -326,6 +328,37 @@ referring to the
 
 ```
 ./rulescli -test $(pwd)'test/http-tests.yaml'
+```
+
+### Textproto
+
+The `-textproto=<filename>` flag is used to validate a file containing a `VendorRulesetCollection` in the text protobuf format. The tool attempts to parse the file and will report any syntactical errors it finds. This is useful for checking the validity of a ruleset collection before it is used.
+
+**Example Usage:**
+
+Assuming you have a file named `my_ruleset.textproto` with content in the `VendorRulesetCollection` format:
+
+```textproto
+# A sample VendorRulesetCollection
+uuid: "123e4567-e89b-12d3-a456-426614174000"
+ruleset_metadata: {
+  owner: "Imperva"
+  description: "Initial set of rules."
+}
+rule_sets: {
+  name: "sqli-rules"
+  category: "sqli"
+  rules: {
+    id: "191190"
+    cel_expression: "request.headers['user-agent'].contains('sqlmap')"
+  }
+}
+```
+
+You can validate this file by running the following command. If the file is valid, the command will exit successfully. If there are syntactical errors, it will print them to the console.
+
+```sh
+./rulescli -textproto="my_ruleset.textproto"
 ```
 
 Disclaimer: This is not an official Google project
