@@ -162,7 +162,7 @@ func (r *rules) newProgram(ast *cel.Ast) cel.Program {
 	return prg
 }
 
-func processVendorRuleset(filename string, verbose bool) error {
+func processVendorRuleset(filename string, r *rules, verbose bool) error {
 	verboseLog(verbose, "Reading vendor ruleset file: %s", filename)
 	content, err := os.ReadFile(filename)
 
@@ -175,9 +175,20 @@ func processVendorRuleset(filename string, verbose bool) error {
 	// Unmarshal the text-formatted content into the struct.
 	parseErr := prototext.Unmarshal(content, &rulesetCollection)
 
-	if parseErr != nil {
+  if parseErr != nil {
 		fmt.Fprintf(os.Stderr, "failed to parse vendor ruleset file as VendorRulesetCollection: %v\n", parseErr)
 		return parseErr
+	}
+  
+  for _, ruleset := range rulesetCollection.GetRuleSets() {
+		for _, rule := range ruleset.GetRules() {
+			if rule.GetCelExpression() != "" {
+				_, ok := r.newAST(rule.GetCelExpression())
+				if !ok {
+					return fmt.Errorf("failed to compile cel_expression for rule %s in ruleset %s", rule.GetId(), ruleset.GetName())
+				}
+			}
+		}
 	}
 
 	fmt.Printf("Successfully validated vendor ruleset. \n")
@@ -203,7 +214,7 @@ func main() {
 	r := newRules(opts.version)
 
 	if opts.textproto != "" {
-		if err := processVendorRuleset(opts.textproto, opts.verbose); err != nil {
+		if err := processVendorRuleset(opts.textproto, r, opts.verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to process vendor ruleset: %v\n", err)
 			os.Exit(1)
 		}
